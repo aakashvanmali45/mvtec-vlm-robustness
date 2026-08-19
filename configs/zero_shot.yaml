@@ -1,0 +1,34 @@
+# Zero-shot classification sweep configuration.
+#
+# Runs: models x categories x strategies = full grid.
+# Reproduces the Day 5 zero-shot results.
+
+experiment_name: zero_shot_baseline
+
+# Path to prompts config (relative to project root).
+prompts_config: configs/prompts.yaml
+
+# Path to MVTec-AD dataset root. Override via CLI --data-root for different environments
+# (e.g. /kaggle/input/datasets/ipythonx/mvtec-ad on Kaggle).
+data_root: /kaggle/input/datasets/ipythonx/mvtec-ad
+
+# Where to save the results CSV (relative to project root).
+output_path: results/zero_shot_results.csv
+
+# Models to sweep. Must be keys in src.models.MODEL_REGISTRY.
+models:
+  - clip
+  - siglip
+
+# Prompt strategies to sweep. Must be keys under each category in prompts_config.
+strategies:
+  - naive
+  - visual_primitive
+  - category_specific
+
+# Categories to sweep. Set to 'all' to use every key in prompts_config,
+# or provide an explicit list for quick testing.
+categories: all
+
+# Inference batch size.
+batch_size: 16
