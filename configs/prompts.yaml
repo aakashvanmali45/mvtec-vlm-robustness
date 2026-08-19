@@ -1,0 +1,174 @@
+# Prompt configurations for MVTec-AD zero-shot and few-shot experiments.
+#
+# Structure: category -> strategy -> [good_prompt, defective_prompt]
+# Convention: index 0 = good, index 1 = defective.
+#
+# Three strategies at increasing specificity:
+#   naive:             generic prompts, no domain knowledge
+#   visual_primitive:  general visual language (continuous, broken, uniform, etc.)
+#   category_specific: expert descriptions naming actual defect subtypes
+
+bottle:
+  naive:
+    - "a photo of a good bottle"
+    - "a photo of a defective bottle"
+  visual_primitive:
+    - "a photo of a bottle with a smooth continuous surface"
+    - "a photo of a bottle with a broken or interrupted surface"
+  category_specific:
+    - "a top-down photo of a glass bottle showing a complete unbroken brown ring"
+    - "a top-down photo of a glass bottle with a chipped edge, broken rim, or foreign contamination inside"
+
+cable:
+  naive:
+    - "a photo of a good cable"
+    - "a photo of a defective cable"
+  visual_primitive:
+    - "a photo of a cable with intact continuous structure"
+    - "a photo of a cable with broken, missing, or damaged structure"
+  category_specific:
+    - "a cross-section photo of an electrical cable with three distinct colored wires inside intact insulation"
+    - "a cross-section photo of an electrical cable with cut insulation, missing wires, swapped wire positions, or bent conductors"
+
+capsule:
+  naive:
+    - "a photo of a good capsule"
+    - "a photo of a defective capsule"
+  visual_primitive:
+    - "a photo of a capsule with uniform smooth surface and clear printing"
+    - "a photo of a capsule with cracks, dents, or damaged printing"
+  category_specific:
+    - "a photo of a pharmaceutical capsule with intact shape and clearly printed text"
+    - "a photo of a pharmaceutical capsule with cracks, scratches, holes, deformed shape, or faded print"
+
+carpet:
+  naive:
+    - "a photo of a good carpet"
+    - "a photo of a defective carpet"
+  visual_primitive:
+    - "a photo of a carpet with uniform undisturbed pattern"
+    - "a photo of a carpet with disturbed or interrupted pattern"
+  category_specific:
+    - "a close-up photo of woven carpet fabric with a consistent regular texture"
+    - "a close-up photo of woven carpet fabric with cuts, holes, thread pulls, color stains, or metal contamination"
+
+grid:
+  naive:
+    - "a photo of a good grid"
+    - "a photo of a defective grid"
+  visual_primitive:
+    - "a photo of a metal grid with regular uniform mesh pattern"
+    - "a photo of a metal grid with broken or disturbed mesh pattern"
+  category_specific:
+    - "a top-down photo of a metallic wire grid with evenly spaced regular cells"
+    - "a top-down photo of a metallic wire grid with bent wires, broken cells, thread contamination, or metal debris"
+
+hazelnut:
+  naive:
+    - "a photo of a good hazelnut"
+    - "a photo of a defective hazelnut"
+  visual_primitive:
+    - "a photo of a hazelnut with uniform continuous surface color"
+    - "a photo of a hazelnut with color contrast, marks, or surface damage"
+  category_specific:
+    - "a photo of an intact whole hazelnut with uniform brown shell"
+    - "a photo of a hazelnut with cracks, cut marks, dark holes, or printed contamination on the shell"
+
+leather:
+  naive:
+    - "a photo of a good leather"
+    - "a photo of a defective leather"
+  visual_primitive:
+    - "a photo of leather with uniform undisturbed surface"
+    - "a photo of leather with color contrast, marks, or foreign material"
+  category_specific:
+    - "a close-up photo of tan-colored leather with consistent grain texture"
+    - "a close-up photo of leather with color patches, cuts, folds, poked holes, or visible glue drops"
+
+metal_nut:
+  naive:
+    - "a photo of a good metal nut"
+    - "a photo of a defective metal nut"
+  visual_primitive:
+    - "a photo of a metal nut with uniform shape and color"
+    - "a photo of a metal nut with shape distortion or color anomalies"
+  category_specific:
+    - "a top-down photo of a hexagonal metal nut with symmetric shape and uniform metallic finish"
+    - "a top-down photo of a metal nut that is bent, flipped upside down, color-stained, or has scratched surface"
+
+pill:
+  naive:
+    - "a photo of a good pill"
+    - "a photo of a defective pill"
+  visual_primitive:
+    - "a photo of a pill with uniform surface and consistent shape"
+    - "a photo of a pill with surface damage, discoloration, or shape defects"
+  category_specific:
+    - "a photo of a round white pharmaceutical pill with clean surface and clear imprint"
+    - "a photo of a pharmaceutical pill with cracks, chips, color spots, scratches, contamination, or faded imprint"
+
+screw:
+  naive:
+    - "a photo of a good screw"
+    - "a photo of a defective screw"
+  visual_primitive:
+    - "a photo of a screw with intact thread and clean surface"
+    - "a photo of a screw with damaged thread or surface anomalies"
+  category_specific:
+    - "a photo of a metal screw with a sharp intact tip and clean uniform thread"
+    - "a photo of a metal screw with a broken or manipulated tip, damaged thread, scratched head, or bent shaft"
+
+tile:
+  naive:
+    - "a photo of a good tile"
+    - "a photo of a defective tile"
+  visual_primitive:
+    - "a photo of a tile with uniform undisturbed surface pattern"
+    - "a photo of a tile with cracks, contamination, or surface anomalies"
+  category_specific:
+    - "a top-down photo of a ceramic tile with consistent surface pattern and clean edges"
+    - "a top-down photo of a ceramic tile with cracks, glue strips, rough surface, oil stains, or gray contamination"
+
+toothbrush:
+  naive:
+    - "a photo of a good toothbrush"
+    - "a photo of a defective toothbrush"
+  visual_primitive:
+    - "a photo of a toothbrush with uniform straight bristles"
+    - "a photo of a toothbrush with damaged or irregular bristles"
+  category_specific:
+    - "a close-up photo of a toothbrush head with evenly distributed vertical bristles"
+    - "a close-up photo of a toothbrush head with bent bristles, missing bristles, or foreign contamination between bristles"
+
+transistor:
+  naive:
+    - "a photo of a good transistor"
+    - "a photo of a defective transistor"
+  visual_primitive:
+    - "a photo of a transistor with correctly positioned pins and intact body"
+    - "a photo of a transistor with misplaced pins, bent leads, or damaged body"
+  category_specific:
+    - "a photo of an electronic transistor mounted on a circuit board with three straight parallel metal leads"
+    - "a photo of an electronic transistor with bent leads, cut leads, damaged case, or misplaced position on the board"
+
+wood:
+  naive:
+    - "a photo of a good wood"
+    - "a photo of a defective wood"
+  visual_primitive:
+    - "a photo of a wood surface with uniform natural grain"
+    - "a photo of a wood surface with damage, marks, or contamination"
+  category_specific:
+    - "a close-up photo of a wooden surface with consistent brown grain pattern"
+    - "a close-up photo of a wooden surface with color stains, scratches, cracks, holes, or liquid marks"
+
+zipper:
+  naive:
+    - "a photo of a good zipper"
+    - "a photo of a defective zipper"
+  visual_primitive:
+    - "a photo of a zipper with intact interlocking teeth"
+    - "a photo of a zipper with broken, misaligned, or damaged teeth"
+  category_specific:
+    - "a close-up photo of a black zipper with symmetric rows of intact metal teeth interlocking properly"
+    - "a close-up photo of a zipper with broken teeth, missing teeth, split fabric, rough edges, or squeezed teeth"
