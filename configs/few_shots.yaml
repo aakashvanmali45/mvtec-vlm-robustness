@@ -1,0 +1,38 @@
+# Few-shot LoRA fine-tuning sweep configuration.
+#
+# Day 13 scope: k=5, seed=42, CLIP only, all 15 categories, naive prompts.
+# Days 14 will extend to k=[1,5,10] x seeds=[42,123,456] once k=5 is validated.
+
+experiment_name: few_shot_k5_seed42_clip_naive
+
+prompts_config: configs/prompts.yaml
+data_root: /kaggle/input/datasets/ipythonx/mvtec-ad
+output_path: results/few_shot_results.csv
+
+models:
+  - clip
+
+categories: all
+
+# Shots per class (per category). k=5 means 5 good + 5 defective training images.
+k_values:
+  - 5
+
+# Random seeds. Each (model, category, k, seed) is one training run.
+seeds:
+  - 42
+
+# Which prompt strategy to use for training and evaluation.
+# Naive was the winning zero-shot strategy on aggregate, so it's the natural
+# baseline for few-shot as well.
+strategy: naive
+
+# LoRA hyperparameters. Locked defaults from LoRATrainingConfig; override here if needed.
+lora:
+  rank: 8
+  alpha: 16
+  target_modules: ["q_proj", "v_proj"]
+  learning_rate: 0.0001
+  weight_decay: 0.01
+  epochs: 20
+  batch_size: 8
