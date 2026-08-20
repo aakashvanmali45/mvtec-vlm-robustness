@@ -1,0 +1,31 @@
+experiment_name: few_shot_full_k1_5_10_seeds_clip_naive
+
+prompts_config: configs/prompts.yaml
+data_root: /kaggle/input/datasets/ipythonx/mvtec-ad
+output_path: results/few_shot_full_results.csv
+
+models:
+  - clip
+
+categories: all
+
+k_values:
+  - 1
+  - 5
+  - 10
+
+seeds:
+  - 42
+  - 123
+  - 456
+
+strategy: naive
+
+lora:
+  rank: 8
+  alpha: 16
+  target_modules: ["q_proj", "v_proj"]
+  learning_rate: 0.0001
+  weight_decay: 0.01
+  epochs: 20
+  batch_size: 8
