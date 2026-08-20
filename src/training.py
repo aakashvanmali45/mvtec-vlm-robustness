@@ -176,8 +176,11 @@ def train_lora_adapter(
     model = classifier.model
     processor = classifier.processor
 
+    is_siglip = "siglip" in type(processor).__name__.lower()
+    padding_mode = "max_length" if is_siglip else True
+
     # Precompute text inputs — prompts don't change across the training loop.
-    text_inputs = processor(text=list(prompts), return_tensors="pt", padding=True).to(device)
+    text_inputs = processor(text=list(prompts), return_tensors="pt", padding=padding_mode).to(device)
 
     dataset = FewShotDataset(train_samples)
     loader = DataLoader(
@@ -205,11 +208,14 @@ def train_lora_adapter(
             image_inputs = processor(images=images, return_tensors="pt").to(device)
 
             # Forward: get logits_per_image, which is (batch, 2) similarity scores.
-            outputs = model(
-                pixel_values=image_inputs["pixel_values"],
-                input_ids=text_inputs["input_ids"],
-                attention_mask=text_inputs["attention_mask"],
-            )
+            model_kwargs = {
+    "pixel_values": image_inputs["pixel_values"],
+    "input_ids": text_inputs["input_ids"],
+}           
+
+            if "attention_mask" in text_inputs:
+                model_kwargs["attention_mask"] = text_inputs["attention_mask"]
+            outputs = model(**model_kwargs)
             logits = outputs.logits_per_image  # (batch, 2)
 
             # Cross-entropy: labels are 0 (good) or 1 (defective), matching prompt indices.
