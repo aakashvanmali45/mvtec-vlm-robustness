@@ -181,10 +181,11 @@ def run_few_shot_sweep(
     training_config = LoRATrainingConfig(**(lora_config or {}))
 
     # Only CLIP is currently supported for LoRA (SigLIP peft integration is less mature).
+    supported_models = {"clip", "siglip"}
     for m in models:
-        if m != "clip":
+        if m not in supported_models:
             raise NotImplementedError(
-                f"LoRA fine-tuning only supported for 'clip' currently, got '{m}'"
+                f"LoRA fine-tuning only supported for 'clip' and 'siglip' currently, got '{m}'"
             )
 
     rows = []
