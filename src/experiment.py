@@ -143,6 +143,7 @@ def run_few_shot_sweep(
     lora_config: dict[str, Any] | None = None,
     device: str = "cuda",
     verbose: bool = True,
+    adapter_save_dir: str | Path | None = None,
 ) -> pd.DataFrame:
     """Run few-shot LoRA fine-tuning sweep across models x categories x k x seeds.
 
@@ -228,6 +229,12 @@ def run_few_shot_sweep(
                                 f"\n[{config_idx}/{n_configs}] {model_name} | {category} | "
                                 f"k={k} | seed={seed} | training..."
                             )
+
+                        if adapter_save_dir is not None:
+                            adapter_path = Path(adapter_save_dir) / f"{model_name}_{category}_k{k}_seed{seed}"
+
+                        else:
+                            adapter_path = None
                         epoch_losses = train_lora_adapter(
                             classifier=classifier,
                             train_samples=train_samples,
@@ -235,6 +242,7 @@ def run_few_shot_sweep(
                             config=training_config,
                             device=device,
                             verbose=False,  # too noisy inside the sweep
+                            save_adapter_path=adapter_path,
                         )
 
                         # Evaluate.
