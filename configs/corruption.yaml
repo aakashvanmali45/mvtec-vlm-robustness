@@ -1,0 +1,32 @@
+experiment_name: zero_shot_corruption_all_models_naive
+
+prompts_config: configs/prompts.yaml
+data_root: /kaggle/input/datasets/ipythonx/mvtec-ad
+output_path: results/corruption_results.csv
+
+models:
+  - clip
+  - siglip
+
+categories: all
+
+# Which prompt strategy to use for zero-shot inference under corruption.
+# Naive was the aggregate winner on clean images, so it's the natural baseline.
+strategy: naive
+
+# Which corruption types to evaluate. Default: all five.
+corruption_types:
+  - gaussian_blur
+  - gaussian_noise
+  - jpeg_compression
+  - brightness
+  - contrast
+
+# Severity levels: 1 = light, 2 = moderate, 3 = severe.
+severity_levels:
+  - 1
+  - 2
+  - 3
+
+batch_size: 16
+seed: 42
