@@ -78,6 +78,7 @@ def main() -> None:
         strategy=config["strategy"],
         output_path=output_path,
         lora_config=config["lora"],
+        adapter_save_dir=config.get("adapter_save_dir"),
         device=device,
         verbose=not args.quiet,
     )
