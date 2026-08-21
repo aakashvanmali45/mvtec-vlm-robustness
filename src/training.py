@@ -153,6 +153,7 @@ def train_lora_adapter(
     config: LoRATrainingConfig,
     device: str = "cuda",
     verbose: bool = True,
+    save_adapter_path: str | Path | None = None,
 ) -> list[float]:
     """Train a LoRA adapter on the CLIP vision encoder for one category.
 
@@ -234,6 +235,9 @@ def train_lora_adapter(
             print(f"  epoch {epoch+1:3d}/{config.epochs} — loss: {avg_loss:.4f}")
 
     model.eval()
+
+    if save_adapter_path is not None:
+        save_adapter(classifier.model, save_adapter_path)
     return epoch_losses
 
 def save_adapter(model, save_path: str | Path) -> None:
