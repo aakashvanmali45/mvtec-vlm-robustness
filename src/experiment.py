@@ -6,6 +6,7 @@ from typing import Any
 
 import pandas as pd
 import torch
+import numpy as np
 
 from src.data import collect_test_samples, load_prompts
 from src.metrics import compute_metrics
@@ -19,6 +20,8 @@ from src.training import (
     train_lora_adapter,
 )
 
+from PIL import Image
+from src.corruptions import CORRUPTION_TYPES, SEVERITY_LEVELS, corrupt_image
 
 def run_zero_shot_sweep(
     prompts_config: str | Path,
@@ -295,3 +298,180 @@ def run_few_shot_sweep(
         print(f"Total runtime: {(time.time() - t_start) / 60:.1f} min")
 
     return df
+
+def run_corruption_evaluation(
+    prompts_config: str | Path,
+    data_root: str | Path,
+    models: list[str],
+    categories: list[str] | str,
+    strategy: str,
+    fewshot_adapter_dir: str | Path | None,
+    output_path: str | Path,
+    corruption_types: list[str] | None = None,
+    severity_levels: list[int] | None = None,
+    batch_size: int = 16,
+    device: str = "cuda",
+    seed: int = 42,
+    verbose: bool = True,
+) -> pd.DataFrame:
+    """Evaluate model robustness under image corruptions.
+
+    For each (model, category, corruption_type, severity) combination,
+    applies the corruption to test images and computes classification metrics.
+    This is inference-only — no retraining. Training remains on clean images.
+
+    Args:
+        prompts_config: Path to YAML prompts.
+        data_root: Path to MVTec-AD.
+        models: List of model names.
+        categories: 'all' or list.
+        strategy: Prompt strategy (e.g. 'naive').
+        fewshot_adapter_dir: If set, loads few-shot LoRA adapters for each
+            (model, category) from this directory. Adapter path convention:
+            {dir}/{model}_{category}_k5_seed{seed}. Currently unused —
+            corruption evaluation runs zero-shot only in this initial version.
+            Included in signature for future few-shot corruption evaluation.
+        output_path: Where to save the CSV.
+        corruption_types: Which corruptions to run. Defaults to all 5.
+        severity_levels: Which severities. Defaults to all 3.
+        batch_size: Inference batch size.
+        device: Torch device.
+        seed: Random seed for noise-based corruptions.
+        verbose: Print per-configuration progress.
+
+    Returns:
+        DataFrame with one row per (model, category, corruption, severity).
+    """
+    prompts_all = load_prompts(prompts_config)
+
+    if categories == "all":
+        categories = sorted(prompts_all.keys())
+    elif isinstance(categories, str):
+        raise ValueError(f"categories must be 'all' or a list, got string {categories!r}")
+
+    corruption_types = corruption_types or list(CORRUPTION_TYPES)
+    severity_levels = severity_levels or list(SEVERITY_LEVELS)
+
+    for c in corruption_types:
+        if c not in CORRUPTION_TYPES:
+            raise ValueError(f"Unknown corruption '{c}'. Valid: {list(CORRUPTION_TYPES)}")
+    for s in severity_levels:
+        if s not in SEVERITY_LEVELS:
+            raise ValueError(f"Invalid severity {s}. Valid: {list(SEVERITY_LEVELS)}")
+
+    rows = []
+    t_start = time.time()
+    n_configs = (
+        len(models) * len(categories) * len(corruption_types) * len(severity_levels)
+    )
+    config_idx = 0
+
+    for model_name in models:
+        if verbose:
+            print(f"\n[loading {model_name}]")
+        classifier = load_classifier(model_name, device=device)
+
+        for category in categories:
+            samples = collect_test_samples(category, data_root)
+            prompts = prompts_all[category][strategy]
+
+            for corruption_type in corruption_types:
+                for severity in severity_levels:
+                    config_idx += 1
+                    np.random.seed(seed)  # for noise-based corruptions
+
+                    try:
+                        # Build corrupted sample list — dicts still, but with
+                        # image_path replaced by an in-memory PIL image handle
+                        # via a thin wrapper class isn't needed because
+                        # zero_shot_classify_category opens paths. So we
+                        # inline the corruption + inference here.
+                        results = _classify_corrupted(
+                            classifier, samples, prompts,
+                            corruption_type, severity,
+                            batch_size=batch_size,
+                        )
+                        metrics = compute_metrics(results)
+                        row = {
+                            "model": model_name,
+                            "category": category,
+                            "corruption": corruption_type,
+                            "severity": severity,
+                            "strategy": strategy,
+                            "n_total": metrics["n_total"],
+                            "n_good": metrics["n_good"],
+                            "n_defective": metrics["n_defective"],
+                            "accuracy": metrics["accuracy"],
+                            "balanced_accuracy": metrics["balanced_accuracy"],
+                            "precision": metrics["precision"],
+                            "recall": metrics["recall"],
+                            "f1": metrics["f1"],
+                            "auroc": metrics["auroc"],
+                            "confusion_matrix": str(metrics["confusion_matrix"]),
+                        }
+                        rows.append(row)
+
+                        # Per-run checkpoint (matches your Week 3 pattern)
+                        pd.DataFrame(rows).to_csv(output_path, index=False)
+
+                        if verbose:
+                            elapsed = time.time() - t_start
+                            print(
+                                f"[{elapsed:6.1f}s] [{config_idx}/{n_configs}] "
+                                f"{model_name:>6} | {category:<12} | "
+                                f"{corruption_type:<18} | sev={severity} | "
+                                f"bal_acc={metrics['balanced_accuracy']:.3f}  "
+                                f"AUROC={metrics['auroc']:.3f}"
+                            )
+                    except Exception as e:
+                        print(
+                            f"[ERROR] {model_name} | {category} | "
+                            f"{corruption_type} | sev={severity}: {e}"
+                        )
+
+        del classifier
+
+    df = pd.DataFrame(rows)
+    output_path = Path(output_path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    df.to_csv(output_path, index=False)
+
+    if verbose:
+        print(f"\nDone. {len(df)} rows saved to {output_path}")
+        print(f"Total runtime: {(time.time() - t_start) / 60:.1f} min")
+
+    return df
+
+
+def _classify_corrupted(
+    classifier,
+    samples: list[dict[str, str]],
+    prompts: list[str],
+    corruption_type: str,
+    severity: int,
+    batch_size: int = 16,
+) -> list[dict]:
+    """Run inference on corrupted images. Internal helper for corruption sweep."""
+    results = []
+    for i in range(0, len(samples), batch_size):
+        batch = samples[i : i + batch_size]
+        images = []
+        for s in batch:
+            img = Image.open(s["image_path"]).convert("RGB")
+            img = corrupt_image(img, corruption_type, severity)
+            images.append(img)
+
+        probs = classifier.classify_images(images, prompts)
+
+        for sample, prob in zip(batch, probs):
+            prob_good, prob_defective = float(prob[0]), float(prob[1])
+            predicted = "good" if prob_good > prob_defective else "defective"
+            results.append({
+                "image_path": sample["image_path"],
+                "true_label": sample["true_label"],
+                "subtype": sample["subtype"],
+                "predicted_label": predicted,
+                "prob_good": prob_good,
+                "prob_defective": prob_defective,
+            })
+    return results
