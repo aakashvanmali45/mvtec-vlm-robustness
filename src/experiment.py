@@ -12,6 +12,10 @@ from src.data import collect_test_samples, load_prompts
 from src.metrics import compute_metrics
 from src.models import load_classifier, zero_shot_classify_category
 
+from src.calibration import find_optimal_threshold, apply_threshold_to_results
+from src.data import sample_three_way_split
+from src.training import load_adapter, save_adapter
+
 from src.training import (
     LoRATrainingConfig,
     attach_lora,
@@ -475,3 +479,253 @@ def _classify_corrupted(
                 "prob_defective": prob_defective,
             })
     return results
+
+def run_threshold_calibration_sweep(
+    prompts_config: str | Path,
+    data_root: str | Path,
+    models: list[str],
+    categories: list[str] | str,
+    strategy: str,
+    k_calib: int,
+    seeds: list[int],
+    output_path: str | Path,
+    batch_size: int = 16,
+    device: str = "cuda",
+    verbose: bool = True,
+) -> pd.DataFrame:
+    """Evaluate threshold-calibrated zero-shot classification.
+
+    For each (model, category, seed), samples k_calib good + k_calib defective
+    for a calibration set, finds the optimal decision threshold, then
+    evaluates on the disjoint remaining test images with that threshold.
+    This is a training-free baseline that isolates the effect of decision
+    threshold choice from any representation-learning effect.
+
+    Returns per-run metrics: n_calib, chosen_threshold, calib_balacc, and
+    all standard eval metrics computed at that threshold.
+    """
+    prompts_all = load_prompts(prompts_config)
+
+    if categories == "all":
+        categories = sorted(prompts_all.keys())
+    elif isinstance(categories, str):
+        raise ValueError(f"categories must be 'all' or a list, got string {categories!r}")
+
+    rows = []
+    t_start = time.time()
+
+    for model_name in models:
+        if verbose:
+            print(f"\n[loading {model_name}]")
+        classifier = load_classifier(model_name, device=device)
+
+        for category in categories:
+            samples = collect_test_samples(category, data_root)
+            prompts = prompts_all[category][strategy]
+
+            for seed in seeds:
+                try:
+                    # Three-way split with k_train=0 (we don't train here)
+                    _, calib_samples, eval_samples = sample_three_way_split(
+                        samples, k_train=0, k_calib=k_calib, seed=seed,
+                    )
+
+                    # Zero-shot inference on calibration set
+                    calib_results = zero_shot_classify_category(
+                        classifier, calib_samples, prompts, batch_size=batch_size,
+                    )
+                    calib_scores = [r["prob_defective"] for r in calib_results]
+                    calib_labels = [1 if r["true_label"] == "defective" else 0
+                                    for r in calib_results]
+
+                    # Find optimal threshold
+                    threshold, calib_balacc = find_optimal_threshold(
+                        calib_scores, calib_labels,
+                    )
+
+                    # Zero-shot inference on eval set, then recompute predictions
+                    eval_results_raw = zero_shot_classify_category(
+                        classifier, eval_samples, prompts, batch_size=batch_size,
+                    )
+                    eval_results = apply_threshold_to_results(
+                        eval_results_raw, threshold=threshold,
+                    )
+                    metrics = compute_metrics(eval_results)
+
+                    row = {
+                        "model": model_name,
+                        "category": category,
+                        "seed": seed,
+                        "strategy": strategy,
+                        "k_calib": k_calib,
+                        "chosen_threshold": threshold,
+                        "calib_balacc": calib_balacc,
+                        "n_calib": len(calib_samples),
+                        "n_eval": metrics["n_total"],
+                        "n_eval_good": metrics["n_good"],
+                        "n_eval_defective": metrics["n_defective"],
+                        "accuracy": metrics["accuracy"],
+                        "balanced_accuracy": metrics["balanced_accuracy"],
+                        "precision": metrics["precision"],
+                        "recall": metrics["recall"],
+                        "f1": metrics["f1"],
+                        "auroc": metrics["auroc"],
+                        "confusion_matrix": str(metrics["confusion_matrix"]),
+                    }
+                    rows.append(row)
+                    pd.DataFrame(rows).to_csv(output_path, index=False)
+
+                    if verbose:
+                        elapsed = time.time() - t_start
+                        print(
+                            f"[{elapsed:6.1f}s] {model_name:>6} | {category:<12} | "
+                            f"seed={seed} | thresh={threshold:.3f} | "
+                            f"bal_acc={metrics['balanced_accuracy']:.3f} | "
+                            f"AUROC={metrics['auroc']:.3f}"
+                        )
+                except Exception as e:
+                    print(f"[ERROR] {model_name} | {category} | seed={seed}: {e}")
+
+        del classifier
+
+    df = pd.DataFrame(rows)
+    output_path = Path(output_path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    df.to_csv(output_path, index=False)
+
+    if verbose:
+        print(f"\nDone. {len(df)} rows saved to {output_path}")
+        print(f"Total runtime: {(time.time() - t_start) / 60:.1f} min")
+
+    return df
+
+
+def run_lora_corruption_sweep(
+    prompts_config: str | Path,
+    data_root: str | Path,
+    adapter_dir: str | Path,
+    models: list[str],
+    categories: list[str] | str,
+    strategy: str,
+    k: int,
+    seed: int,
+    corruption_types: list[str],
+    severity_levels: list[int],
+    output_path: str | Path,
+    batch_size: int = 16,
+    device: str = "cuda",
+    verbose: bool = True,
+) -> pd.DataFrame:
+    """Evaluate LoRA-adapted models under image corruption.
+
+    For each (model, category, corruption, severity), loads the pre-trained
+    LoRA adapter for that (model, category, k, seed) combination and
+    evaluates on corrupted images. Adapters must exist at
+    {adapter_dir}/{model}_{category}_k{k}_seed{seed}/.
+
+    This tests whether few-shot adaptation improvements survive under
+    realistic image degradations, or whether adaptation trades robustness
+    for clean accuracy.
+    """
+    from src.corruptions import corrupt_image
+    from PIL import Image
+
+    prompts_all = load_prompts(prompts_config)
+    if categories == "all":
+        categories = sorted(prompts_all.keys())
+    elif isinstance(categories, str):
+        raise ValueError(f"categories must be 'all' or a list, got {categories!r}")
+
+    adapter_dir = Path(adapter_dir)
+
+    rows = []
+    t_start = time.time()
+    n_configs = (
+        len(models) * len(categories) * len(corruption_types) * len(severity_levels)
+    )
+    config_idx = 0
+
+    for model_name in models:
+        for category in categories:
+            samples = collect_test_samples(category, data_root)
+
+            # We need the SAME train/eval split used during training,
+            # so LoRA is evaluated on unseen images. Recreate deterministically.
+            train_samples, eval_samples = sample_few_shot_split(
+                samples, k=k, seed=seed,
+            )
+
+            prompts = prompts_all[category][strategy]
+            adapter_path = adapter_dir / f"{model_name}_{category}_k{k}_seed{seed}"
+
+            if not adapter_path.is_dir():
+                print(f"[SKIP] Adapter not found: {adapter_path}")
+                continue
+
+            # Load fresh classifier + trained adapter
+            classifier = load_classifier(model_name, device=device)
+            load_adapter(classifier.model, adapter_path)
+            classifier.model.eval()
+
+            for corruption_type in corruption_types:
+                for severity in severity_levels:
+                    config_idx += 1
+                    np.random.seed(seed)
+
+                    try:
+                        results = _classify_corrupted(
+                            classifier, eval_samples, prompts,
+                            corruption_type, severity, batch_size=batch_size,
+                        )
+                        metrics = compute_metrics(results)
+
+                        row = {
+                            "model": model_name,
+                            "category": category,
+                            "k": k,
+                            "seed": seed,
+                            "corruption": corruption_type,
+                            "severity": severity,
+                            "strategy": strategy,
+                            "n_eval": metrics["n_total"],
+                            "n_eval_good": metrics["n_good"],
+                            "n_eval_defective": metrics["n_defective"],
+                            "accuracy": metrics["accuracy"],
+                            "balanced_accuracy": metrics["balanced_accuracy"],
+                            "precision": metrics["precision"],
+                            "recall": metrics["recall"],
+                            "f1": metrics["f1"],
+                            "auroc": metrics["auroc"],
+                            "confusion_matrix": str(metrics["confusion_matrix"]),
+                        }
+                        rows.append(row)
+                        pd.DataFrame(rows).to_csv(output_path, index=False)
+
+                        if verbose:
+                            elapsed = time.time() - t_start
+                            print(
+                                f"[{elapsed:6.1f}s] [{config_idx}/{n_configs}] "
+                                f"{model_name:>6} | {category:<12} | "
+                                f"{corruption_type:<18} | sev={severity} | "
+                                f"bal_acc={metrics['balanced_accuracy']:.3f}"
+                            )
+                    except Exception as e:
+                        print(
+                            f"[ERROR] {model_name} | {category} | "
+                            f"{corruption_type} | sev={severity}: {e}"
+                        )
+
+            del classifier
+            import torch
+            torch.cuda.empty_cache()
+
+    df = pd.DataFrame(rows)
+    output_path = Path(output_path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    df.to_csv(output_path, index=False)
+
+    if verbose:
+        print(f"\nDone. {len(df)} rows saved to {output_path}")
+        print(f"Total runtime: {(time.time() - t_start) / 60:.1f} min")
+
+    return df

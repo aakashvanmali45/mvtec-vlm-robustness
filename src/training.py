@@ -236,6 +236,56 @@ def train_lora_adapter(
     model.eval()
     return epoch_losses
 
+def save_adapter(model, save_path: str | Path) -> None:
+    """Save the LoRA adapter weights (not the full model) to disk.
+
+    Args:
+        model: A CLIP or SigLIP model with LoRA attached via attach_lora.
+        save_path: Directory where the adapter weights will be saved.
+            Creates the directory if it doesn't exist.
+
+    The saved adapter is small (~1-2 MB) and can be reloaded onto a fresh
+    base model via load_adapter.
+    """
+    save_path = Path(save_path)
+    save_path.mkdir(parents=True, exist_ok=True)
+
+    # The vision_model attribute is the PeftModel wrapper after attach_lora
+    # It exposes save_pretrained() which writes only the adapter weights.
+    if hasattr(model, "vision_model") and hasattr(model.vision_model, "save_pretrained"):
+        model.vision_model.save_pretrained(save_path)
+    else:
+        raise RuntimeError(
+            "Model does not appear to have LoRA attached. "
+            "Call attach_lora before save_adapter."
+        )
+
+
+def load_adapter(base_model, adapter_path: str | Path):
+    """Load a previously-saved LoRA adapter onto a fresh base model.
+
+    Args:
+        base_model: A freshly-loaded CLIP or SigLIP model (via load_classifier).
+        adapter_path: Directory where the adapter was saved by save_adapter.
+
+    Returns:
+        The base model with the adapter loaded onto vision_model.
+    """
+    from peft import PeftModel
+
+    adapter_path = Path(adapter_path)
+    if not adapter_path.is_dir():
+        raise FileNotFoundError(f"Adapter directory not found: {adapter_path}")
+
+    # Freeze everything first (same as attach_lora)
+    for param in base_model.parameters():
+        param.requires_grad = False
+
+    base_model.vision_model = PeftModel.from_pretrained(
+        base_model.vision_model,
+        adapter_path,
+    )
+    return base_model
 
 # ------------------- Reproducibility -------------------
 

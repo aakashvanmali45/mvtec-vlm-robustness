@@ -96,3 +96,68 @@ def collect_test_samples(
         raise RuntimeError(f"No test images found under {test_root}")
 
     return samples
+
+def sample_three_way_split(
+    samples: list[dict[str, str]],
+    k_train: int,
+    k_calib: int,
+    seed: int,
+) -> tuple[list[dict[str, str]], list[dict[str, str]], list[dict[str, str]]]:
+    """Split samples into (train, calibration, evaluation) sets.
+
+    Samples k_train good + k_train defective for training, k_calib good +
+    k_calib defective for calibration, everything else for evaluation.
+    All three sets are disjoint. Sampling is seeded and reproducible.
+
+    Args:
+        samples: Output of collect_test_samples.
+        k_train: Samples per class for training (0 to skip training set).
+        k_calib: Samples per class for calibration.
+        seed: RNG seed.
+
+    Returns:
+        (train_samples, calibration_samples, evaluation_samples).
+
+    Raises:
+        ValueError: If either class has insufficient samples.
+    """
+    import random
+
+    rng = random.Random(seed)
+
+    good = [s for s in samples if s["true_label"] == "good"]
+    defective = [s for s in samples if s["true_label"] == "defective"]
+
+    needed_good = k_train + k_calib
+    needed_def = k_train + k_calib
+    if len(good) < needed_good:
+        raise ValueError(f"Need {needed_good} good samples, have {len(good)}")
+    if len(defective) < needed_def:
+        raise ValueError(f"Need {needed_def} defective, have {len(defective)}")
+
+    good_indices = list(range(len(good)))
+    def_indices = list(range(len(defective)))
+    rng.shuffle(good_indices)
+    rng.shuffle(def_indices)
+
+    good_train_idx = set(good_indices[:k_train])
+    good_calib_idx = set(good_indices[k_train : k_train + k_calib])
+    def_train_idx = set(def_indices[:k_train])
+    def_calib_idx = set(def_indices[k_train : k_train + k_calib])
+
+    train = (
+        [good[i] for i in good_train_idx]
+        + [defective[i] for i in def_train_idx]
+    )
+    calibration = (
+        [good[i] for i in good_calib_idx]
+        + [defective[i] for i in def_calib_idx]
+    )
+    evaluation = (
+        [g for i, g in enumerate(good)
+         if i not in good_train_idx and i not in good_calib_idx]
+        + [d for i, d in enumerate(defective)
+           if i not in def_train_idx and i not in def_calib_idx]
+    )
+
+    return train, calibration, evaluation

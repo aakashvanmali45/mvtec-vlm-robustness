@@ -1,0 +1,22 @@
+experiment_name: threshold_calibration_naive_matched_budget
+
+prompts_config: configs/prompts.yaml
+data_root: /kaggle/input/datasets/ipythonx/mvtec-ad
+output_path: results/threshold_calibration_results.csv
+
+models:
+  - clip
+  - siglip
+
+categories: all
+strategy: naive
+
+# Matched to k=5 LoRA budget: 5 good + 5 defective = 10 total labels
+k_calib: 5
+
+seeds:
+  - 42
+  - 123
+  - 456
+
+batch_size: 16

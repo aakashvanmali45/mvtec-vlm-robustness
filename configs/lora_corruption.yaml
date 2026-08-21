@@ -1,0 +1,33 @@
+experiment_name: lora_corruption_k10_seed42
+
+prompts_config: configs/prompts.yaml
+data_root: /kaggle/input/datasets/ipythonx/mvtec-ad
+
+# Directory where trained LoRA adapters were saved by the training sweep
+adapter_dir: results/lora_adapters_k10_seed42
+
+output_path: results/lora_corruption_results.csv
+
+models:
+  - clip
+  - siglip
+
+categories: all
+strategy: naive
+
+k: 10
+seed: 42
+
+corruption_types:
+  - gaussian_blur
+  - gaussian_noise
+  - jpeg_compression
+  - brightness
+  - contrast
+
+severity_levels:
+  - 1
+  - 2
+  - 3
+
+batch_size: 16
