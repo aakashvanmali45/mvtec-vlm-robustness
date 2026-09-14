@@ -1,0 +1,39 @@
+experiment_name: lora_corruption_k10_multiseed
+
+prompts_config: configs/prompts.yaml
+data_root: /kaggle/input/datasets/ipythonx/mvtec-ad
+
+# Shared directory holding seed-42/123/456 subfolders per (model, category).
+# Move the existing results/lora_adapters_k10_seed42/*_seed42 subfolders here,
+# or re-run the seed=42 save-adapters config with this new path.
+adapter_dir: results/lora_adapters_k10
+
+output_path: results/lora_corruption_multiseed_results.csv
+
+models:
+  - clip
+  - siglip
+
+categories: all
+strategy: naive
+
+k: 10
+seeds:
+  - 42
+  - 123
+  - 456
+
+# Match the paper's five-corruption / three-severity suite.
+corruption_types:
+  - gaussian_blur
+  - gaussian_noise
+  - jpeg_compression
+  - brightness
+  - contrast
+
+severity_levels:
+  - 1
+  - 2
+  - 3
+
+batch_size: 16

@@ -1,0 +1,39 @@
+experiment_name: few_shot_k10_multiseed_save_adapters
+
+prompts_config: configs/prompts.yaml
+data_root: /kaggle/input/datasets/ipythonx/mvtec-ad
+output_path: results/few_shot_k10_multiseed_results.csv
+
+# Save into the SAME parent directory as seed=42 adapters — each
+# (model, category, seed) gets its own subfolder, so directories don't collide.
+# After training completes, this folder will contain adapters for all three seeds.
+adapter_save_dir: results/lora_adapters_k10
+
+models:
+  - clip
+  - siglip
+
+categories: all
+
+k_values:
+  - 10
+
+# Seeds 42 was covered by few_shot_k10_save_adapters.yaml. This config trains
+# the two additional seeds required for the corruption robustness variance
+# analysis (Reviewer 2, Comment 3). If seed=42 adapters are already in the
+# new shared folder, keeping 42 here is idempotent — training re-runs will
+# overwrite them with functionally identical weights. Drop 42 to skip.
+seeds:
+  - 123
+  - 456
+
+strategy: naive
+
+lora:
+  rank: 8
+  alpha: 16
+  target_modules: ["q_proj", "v_proj"]
+  learning_rate: 0.0001
+  weight_decay: 0.01
+  epochs: 20
+  batch_size: 8
